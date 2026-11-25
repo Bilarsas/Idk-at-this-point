@@ -1,0 +1,64 @@
+
+workflows:
+  lyrics-studio-ios:
+    name: Lyrics Studio - Unsigned iOS Build
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    environment:
+      node: v24.22.3
+      xcode: latest
+      cocoapods: default
+
+    scripts:
+      - name: Install project dependencies
+        script: npm ci
+
+      - name: Generate iOS project
+        script: |
+          if [ ! -d ios/App ]; then
+            npx cap add ios
+          fi
+
+      - name: Synchronize Capacitor
+        script: npx cap sync ios
+
+      - name: Install CocoaPods dependencies
+        script: |
+          cd ios/App
+          pod install
+
+      - name: Compile iOS application
+        script: |
+          xcodebuild \
+            -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$CM_BUILD_DIR/build/DerivedData" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package unsigned IPA
+        script: |
+          APP_PATH="$CM_BUILD_DIR/build/DerivedData/Build/Products/Release-iphoneos/App.app"
+
+          if [ ! -d "$APP_PATH" ]; then
+            echo "Compiled iOS application was not found."
+            exit 1
+          fi
+
+          mkdir -p "$CM_BUILD_DIR/build/Payload"
+
+          cp -R "$APP_PATH" "$CM_BUILD_DIR/build/Payload/"
+
+          cd "$CM_BUILD_DIR/build"
+
+          zip -qry LyricsStudio-unsigned.ipa Payload
+
+    artifacts:
+      - build/*.ipa
+      - /tmp/xcodebuild_logs/*.log
